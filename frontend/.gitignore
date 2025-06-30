@@ -1,0 +1,53 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.pyo
+
+# Virtual environments
+venv/
+env/
+AIhealth/
+AIhealth
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings
+.vscode/
+
+# macOS files
+.DS_Store
+
+# PyCharm
+.idea/
+
+# Logs and local settings
+*.log
+*.env
+.env.*
+*.db
+*.sqlite3
+
+# Test coverage
+htmlcov/
+coverage.xml
+.cache/
+nosetests.xml
+pytest_cache/
+
+# Flask or Django cache
+instance/
+*.pyc
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Streamlit's temporary file
+.streamlit/
+
+# User data
+user_reports/

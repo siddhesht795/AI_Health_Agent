@@ -1,0 +1,18 @@
+# Core Gemini + LangChain
+langchain
+langchain-community
+google-generativeai
+
+# Environment variable handling
+python-dotenv
+
+# PDF text extraction
+PyMuPDF
+
+# Optional: Logging or data formatting
+rich
+
+# Only needed for visualizations or future UI
+matplotlib
+seaborn
+streamlit

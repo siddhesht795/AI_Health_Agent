@@ -8,20 +8,33 @@ load_dotenv()
 
 def get_explanation_chain():
     prompt = PromptTemplate.from_template("""
-You are a medical assistant.
+You are a highly knowledgeable yet friendly medical assistant. Based on the following **blood test results** and the **user's profile**, analyze the report and explain the findings clearly.
 
-Given the following blood test results and a user's profile, explain what they might mean in plain English. 
-If anything is abnormal, suggest possible causes or what actions to take.
+### What you must include:
+1. For each test with abnormal values, explain what it typically measures.
+2. Mention if the value is **too high**, **too low**, or **normal**, and what that might mean.
+3. Suggest possible medical conditions or causes if the value is abnormal.
+4. Recommend practical advice or follow-up (like retesting, diet changes, consulting a doctor, etc.).
+5. Keep the language simple, empathetic, and suitable for a non-medical person.
 
-User Profile:
+### Do NOT:
+- Do not return markdown, hashes, stars, or formatting.
+- Do not include code blocks or JSON.
+- Do not return generic messages like "I'm an AI language model..."
+
+### User Profile:
 {user_profile}
 
-Test Results:
+### Test Results:
 {test_data}
+
+Now give the explanation in clear human language:
 """)
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash",
-                                 temperature=0.4,
-                                 google_api_key=os.getenv("GOOGLE_GEMINI_API_KEY")
-                                 )
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.4,
+        google_api_key=os.getenv("GOOGLE_GEMINI_API_KEY")
+    )
+
     return prompt | llm

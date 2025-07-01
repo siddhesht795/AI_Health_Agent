@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import "./App.css";
 import { Modal, CircularProgress, Alert } from "@mui/material";
+import ReactMarkdown from "react-markdown";
 
 function App() {
   const [pdfFile, setPdfFile] = useState(null);
@@ -16,6 +17,9 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [error, setError] = useState(null);
+
+  const [showProfile, setShowProfile] = useState(false);
+  const [showResults, setShowResults] = useState(false);
 
   const handlePdfChange = (e) => {
     setPdfFile(e.target.files[0]);
@@ -47,9 +51,54 @@ function App() {
 
       const data = await res.json();
       setReportText(data.text || "");
+      setShowProfile(false);
+      setShowResults(false);
+
+      // Try to auto-fill profile fields by analyzing the report text
+      if (data.text) {
+        setAnalyzing(true);
+        const analyzeRes = await fetch("http://localhost:5000/api/analyze_report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reportText: data.text,
+            userProfile: {},
+          }),
+        });
+        if (analyzeRes.ok) {
+          const analyzeData = await analyzeRes.json();
+          // Auto-fill profile fields if backend provides them
+          if (analyzeData.userProfile) {
+            setName(analyzeData.userProfile.name || "");
+            setAge(analyzeData.userProfile.age || "");
+            setGender(analyzeData.userProfile.gender || "Male");
+            setMedicalHistory(
+              Array.isArray(analyzeData.userProfile.medicalHistory)
+                ? analyzeData.userProfile.medicalHistory.join(", ")
+                : ""
+            );
+          } else {
+            setName("");
+            setAge("");
+            setGender("Male");
+            setMedicalHistory("");
+          }
+          setTestData(analyzeData.testData || {});
+          setInsight(analyzeData.insight || "");
+          setTimeout(() => setShowProfile(true), 200);
+          setTimeout(() => setShowResults(true), 600);
+        } else {
+          setTestData(null);
+          setInsight("");
+        }
+        setAnalyzing(false);
+      }
     } catch (err) {
       setError(err.message);
       setReportText("");
+      setTestData(null);
+      setInsight("");
+      setAnalyzing(false);
     } finally {
       setExtracting(false);
     }
@@ -91,6 +140,8 @@ function App() {
       const data = await res.json();
       setTestData(data.testData || {});
       setInsight(data.insight || "");
+      setShowResults(false);
+      setTimeout(() => setShowResults(true), 200);
     } catch (err) {
       setError(err.message);
       setTestData(null);
@@ -145,17 +196,17 @@ function App() {
 
   return (
     <div className="main-container">
-      <h1 className="main-title">🩺 AI Health Report Decoder</h1>
+      <h1 className="main-title animate-fadein">🩺 AI Health Report Decoder</h1>
 
       {error && (
-        <Alert severity="error" onClose={() => setError(null)}>
+        <Alert severity="error" onClose={() => setError(null)} className="animate-fadein">
           {error}
         </Alert>
       )}
 
-      <div className="main-paper">
+      <div className="main-paper animate-fadein">
         {/* PDF Upload */}
-        <div className="section">
+        <div className="section animate-slidein">
           <h2 className="section-title">Upload your health report PDF</h2>
           <input
             type="file"
@@ -164,7 +215,7 @@ function App() {
             style={{ marginBottom: "1rem" }}
           />
           <button
-            className="extract-btn"
+            className="extract-btn animate-btn"
             onClick={handleExtractPdf}
             disabled={!pdfFile || extracting}
           >
@@ -174,7 +225,7 @@ function App() {
 
         {/* User Profile */}
         {reportText && (
-          <div className="section">
+          <div className={`section animate-fadein ${showProfile ? "visible" : "hidden"}`}>
             <h2 className="section-title">👤 Enter Your Profile</h2>
             <div className="profile-row">
               <input
@@ -183,6 +234,7 @@ function App() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Name"
+                style={{ background: "#fff5f7" }}
               />
               <input
                 className="profile-input"
@@ -192,11 +244,13 @@ function App() {
                 max={120}
                 onChange={(e) => setAge(e.target.value)}
                 placeholder="Age"
+                style={{ background: "#fff5f7" }}
               />
               <select
                 className="profile-input"
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
+                style={{ background: "#fff5f7" }}
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -209,10 +263,10 @@ function App() {
               value={medicalHistory}
               onChange={(e) => setMedicalHistory(e.target.value)}
               placeholder="Medical History (comma-separated)"
-              style={{ width: "100%", marginTop: "1rem" }}
+              style={{ width: "100%", marginTop: "1rem", background: "#fff5f7" }}
             />
             <button
-              className="analyze-btn"
+              className="analyze-btn animate-btn"
               onClick={handleAnalyze}
               disabled={analyzing || !name || !age}
             >
@@ -224,21 +278,42 @@ function App() {
         {/* Results */}
         {testData && (
           <>
-            <div className="section">
+            <div className={`section animate-fadein ${showResults ? "visible" : "hidden"}`}>
               <h2 className="result-title">📊 Extracted Test Values</h2>
               <div className="test-values-box">
-                <pre style={{ margin: 0 }}>{JSON.stringify(testData, null, 2)}</pre>
+                <table className="test-table">
+                  <thead>
+                    <tr>
+                      <th>Test</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(testData).map(([key, value]) => (
+                      <tr key={key}>
+                        <td>{key}</td>
+                        <td>{typeof value === "object" && value !== null
+                          ? `${value.value} ${value.unit || ""}`.trim()
+                          : value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-            <div className="section">
+
+            {/* ✅ Gemini Insight with Markdown */}
+            <div className={`section animate-fadein ${showResults ? "visible" : "hidden"}`}>
               <h2 className="result-title">💡 Insight from Gemini</h2>
-              <div className="insight-box">{insight}</div>
+              <div className="insight-box">
+                <ReactMarkdown>{insight}</ReactMarkdown> {/* Markdown rendering here */}
+              </div>
             </div>
           </>
         )}
 
-        {/* Chat Interface */}
-        <div className="section" style={{ marginTop: "2rem" }}>
+        {/* ✅ Chat Box with Markdown in assistant messages */}
+        <div className="section animate-fadein" style={{ marginTop: "2rem" }}>
           <h2 className="section-title">💬 Ask Anything About Your Report</h2>
           <div className="chat-box">
             {chatMessages.map((msg, idx) => (
@@ -246,10 +321,10 @@ function App() {
                 key={idx}
                 className={msg.role === "user" ? "chat-msg user" : "chat-msg assistant"}
               >
-                <span className={msg.role === "user" ? "chat-user" : "chat-assistant"}>
-                  {msg.role === "user" ? "You: " : "Assistant: "}
-                  {msg.content}
-                </span>
+                <div className={msg.role === "user" ? "chat-user" : "chat-assistant"}>
+                  <strong>{msg.role === "user" ? "You: " : "Assistant: "}</strong>
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
               </div>
             ))}
           </div>
@@ -264,9 +339,10 @@ function App() {
                 if (e.key === "Enter") handleChatSend();
               }}
               disabled={!testData}
+              style={{ background: "#fff5f7" }}
             />
             <button
-              className="send-btn"
+              className="send-btn animate-btn"
               onClick={handleChatSend}
               disabled={!chatInput.trim() || !testData}
             >
@@ -276,16 +352,16 @@ function App() {
         </div>
       </div>
 
-      {/* Loading Modals */}
+      {/* Loading Indicators */}
       <Modal open={extracting}>
         <div className="modal-box">
-          <CircularProgress color="secondary" />
+          <CircularProgress style={{ color: "#e63946" }} />
           <div className="modal-text">Extracting text from PDF...</div>
         </div>
       </Modal>
       <Modal open={analyzing}>
         <div className="modal-box">
-          <CircularProgress color="secondary" />
+          <CircularProgress style={{ color: "#e63946" }} />
           <div className="modal-text">Analyzing your report...</div>
         </div>
       </Modal>

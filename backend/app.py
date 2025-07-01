@@ -65,18 +65,27 @@ def chat():
         data = request.get_json()
         if not data:
             return jsonify({"error": "No data provided"}), 400
-            
+
         user_message = data.get("message", "")
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
-            
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
-        response = llm.invoke(user_message)
-        
-        return jsonify({
-            "response": response.content if hasattr(response, "content") else str(response)
-        })
+
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2,google_api_key=os.getenv("GOOGLE_GEMINI_API_KEY"))
+        try:
+            response = llm.invoke(user_message)
+        except Exception as llm_exc:
+            # Print LLM error for debugging
+            print("LLM error:", llm_exc)
+            return jsonify({"response": "LLM error Sorry, I couldn't process your request."})
+
+        content = getattr(response, "content", None)
+        if not content or not isinstance(content, str) or not content.strip():
+            return jsonify({"response": "Sorry, I couldn't process your request."})
+
+        return jsonify({"response": content})
     except Exception as e:
+        # Print error for debugging
+        print("Chat endpoint error:", e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":

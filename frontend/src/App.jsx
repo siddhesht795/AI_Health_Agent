@@ -1,7 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import "./App.css";
-import { Modal, CircularProgress, Alert } from "@mui/material";
+import { Modal, CircularProgress, Alert, Snackbar, IconButton } from "@mui/material";
 import ReactMarkdown from "react-markdown";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import SendIcon from "@mui/icons-material/Send";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import { v4 as uuidv4 } from "uuid";
 
 function App() {
   const [pdfFile, setPdfFile] = useState(null);
@@ -17,13 +21,29 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [error, setError] = useState(null);
+  const [loadingChat, setLoadingChat] = useState(false);
 
   const [showProfile, setShowProfile] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: "" });
+
+  const chatEndRef = useRef(null);
+  const [sessionId] = useState(() => uuidv4());
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages]);
 
   const handlePdfChange = (e) => {
     setPdfFile(e.target.files[0]);
     setError(null);
+    showSnackbar("PDF selected. Ready to extract!");
+  };
+
+  const showSnackbar = (message) => {
+    setSnackbar({ open: true, message });
   };
 
   const handleExtractPdf = async () => {
@@ -34,6 +54,9 @@ function App() {
 
     setExtracting(true);
     setError(null);
+    setInsight("");
+    setShowResults(false);
+    setChatMessages([]);
 
     const formData = new FormData();
     formData.append("file", pdfFile);
@@ -51,13 +74,10 @@ function App() {
 
       const data = await res.json();
       setReportText(data.text || "");
-      setShowProfile(false);
-      setShowResults(false);
+      showSnackbar("PDF extracted! Please review your details.");
 
-      // Try to auto-fill profile fields by analyzing the report text
       if (data.text) {
-        setAnalyzing(true);
-        const analyzeRes = await fetch("http://localhost:5000/api/analyze_report", {
+        const extractRes = await fetch("http://localhost:5000/api/analyze_report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -65,40 +85,30 @@ function App() {
             userProfile: {},
           }),
         });
-        if (analyzeRes.ok) {
-          const analyzeData = await analyzeRes.json();
-          // Auto-fill profile fields if backend provides them
-          if (analyzeData.userProfile) {
-            setName(analyzeData.userProfile.name || "");
-            setAge(analyzeData.userProfile.age || "");
-            setGender(analyzeData.userProfile.gender || "Male");
+
+        if (extractRes.ok) {
+          const extractData = await extractRes.json();
+
+          // Auto-fill profile if available in report
+          if (extractData.userProfile) {
+            setName(extractData.userProfile.name || "");
+            setAge(extractData.userProfile.age || "");
+            setGender(extractData.userProfile.gender || "Male");
             setMedicalHistory(
-              Array.isArray(analyzeData.userProfile.medicalHistory)
-                ? analyzeData.userProfile.medicalHistory.join(", ")
+              Array.isArray(extractData.userProfile.medicalHistory)
+                ? extractData.userProfile.medicalHistory.join(", ")
                 : ""
             );
-          } else {
-            setName("");
-            setAge("");
-            setGender("Male");
-            setMedicalHistory("");
           }
-          setTestData(analyzeData.testData || {});
-          setInsight(analyzeData.insight || "");
-          setTimeout(() => setShowProfile(true), 200);
-          setTimeout(() => setShowResults(true), 600);
-        } else {
-          setTestData(null);
-          setInsight("");
+
+          setTestData(extractData.testData || {});
+          setShowProfile(true);
         }
-        setAnalyzing(false);
       }
     } catch (err) {
       setError(err.message);
       setReportText("");
       setTestData(null);
-      setInsight("");
-      setAnalyzing(false);
     } finally {
       setExtracting(false);
     }
@@ -138,13 +148,11 @@ function App() {
       }
 
       const data = await res.json();
-      setTestData(data.testData || {});
       setInsight(data.insight || "");
-      setShowResults(false);
-      setTimeout(() => setShowResults(true), 200);
+      setShowResults(true);
+      showSnackbar("Analysis complete! You can now chat about your report.");
     } catch (err) {
       setError(err.message);
-      setTestData(null);
       setInsight("");
     } finally {
       setAnalyzing(false);
@@ -152,26 +160,29 @@ function App() {
   };
 
   const handleChatSend = async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || loadingChat) return;
 
-    const newMessage = { role: "user", content: chatInput };
-    setChatMessages([...chatMessages, newMessage]);
+    const userMessage = chatInput.trim();
+    const newMessage = { role: "user", content: userMessage };
+    setChatMessages(prev => [...prev, newMessage]);
     setChatInput("");
     setError(null);
+    setLoadingChat(true);
 
     try {
       const res = await fetch("http://localhost:5000/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: chatInput,
+          message: userMessage,
           testData,
           userProfile: {
             name,
             age: Number(age),
             gender,
-            medicalHistory: medicalHistory.split(",").map((h) => h.trim()).filter(h => h),
+            medicalHistory: medicalHistory.split(",").map(h => h.trim()).filter(h => h),
           },
+          sessionId
         }),
       });
 
@@ -181,22 +192,53 @@ function App() {
       }
 
       const data = await res.json();
-      setChatMessages(msgs => [
-        ...msgs,
+      setChatMessages(prev => [
+        ...prev,
         { role: "assistant", content: data.response }
       ]);
     } catch (err) {
       setError(err.message);
-      setChatMessages(msgs => [
-        ...msgs,
-        { role: "assistant", content: "Sorry, I couldn't process your request." }
+      setChatMessages(prev => [
+        ...prev,
+        { role: "assistant", content: "Sorry, I couldn't process your request. Please try again." }
       ]);
+    } finally {
+      setLoadingChat(false);
     }
+  };
+
+  const handleReset = () => {
+    setPdfFile(null);
+    setExtracting(false);
+    setAnalyzing(false);
+    setReportText("");
+    setName("");
+    setAge("");
+    setGender("Male");
+    setMedicalHistory("");
+    setTestData(null);
+    setInsight("");
+    setChatMessages([]);
+    setChatInput("");
+    setError(null);
+    setShowProfile(false);
+    setShowResults(false);
+    showSnackbar("Session reset. Ready for a new report!");
   };
 
   return (
     <div className="main-container">
-      <h1 className="main-title animate-fadein">🩺 AI Health Report Decoder</h1>
+      <h1 className="main-title animate-fadein">
+        🩺 AI Health Report Decoder
+        <IconButton
+          aria-label="reset"
+          onClick={handleReset}
+          style={{ float: "right", color: "#e63946" }}
+          title="Reset Session"
+        >
+          <RestartAltIcon />
+        </IconButton>
+      </h1>
 
       {error && (
         <Alert severity="error" onClose={() => setError(null)} className="animate-fadein">
@@ -204,29 +246,55 @@ function App() {
         </Alert>
       )}
 
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        message={snackbar.message}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      />
+
       <div className="main-paper animate-fadein">
-        {/* PDF Upload */}
+        {/* PDF Upload Section */}
         <div className="section animate-slidein">
-          <h2 className="section-title">Upload your health report PDF</h2>
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={handlePdfChange}
-            style={{ marginBottom: "1rem" }}
-          />
+          <h2 className="section-title">
+            <UploadFileIcon style={{ verticalAlign: "middle", marginRight: 8, color: "#e63946" }} />
+            Upload your health report PDF
+          </h2>
+          <label className="custom-file-upload">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handlePdfChange}
+              style={{ display: "none" }}
+            />
+            <span>
+              {pdfFile ? pdfFile.name : "Choose PDF"}
+            </span>
+          </label>
           <button
             className="extract-btn animate-btn"
             onClick={handleExtractPdf}
             disabled={!pdfFile || extracting}
           >
-            {extracting ? "Extracting..." : "Extract PDF"}
+            {extracting ? (
+              <>
+                <CircularProgress size={18} style={{ color: "#fff", marginRight: 8 }} />
+                Extracting...
+              </>
+            ) : (
+              <>
+                <UploadFileIcon style={{ fontSize: 18, marginRight: 8 }} />
+                Extract PDF
+              </>
+            )}
           </button>
         </div>
 
-        {/* User Profile */}
-        {reportText && (
-          <div className={`section animate-fadein ${showProfile ? "visible" : "hidden"}`}>
-            <h2 className="section-title">👤 Enter Your Profile</h2>
+        {/* Profile and Extracted Values Section */}
+        {reportText && showProfile && (
+          <div className="section animate-fadein">
+            <h2 className="section-title">👤 Profile Information</h2>
             <div className="profile-row">
               <input
                 className="profile-input"
@@ -234,7 +302,7 @@ function App() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Name"
-                style={{ background: "#fff5f7" }}
+                autoFocus
               />
               <input
                 className="profile-input"
@@ -244,13 +312,11 @@ function App() {
                 max={120}
                 onChange={(e) => setAge(e.target.value)}
                 placeholder="Age"
-                style={{ background: "#fff5f7" }}
               />
               <select
                 className="profile-input"
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
-                style={{ background: "#fff5f7" }}
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -263,100 +329,121 @@ function App() {
               value={medicalHistory}
               onChange={(e) => setMedicalHistory(e.target.value)}
               placeholder="Medical History (comma-separated)"
-              style={{ width: "100%", marginTop: "1rem", background: "#fff5f7" }}
+              style={{ width: "100%", marginTop: "1rem" }}
             />
+
+            {/* Extracted Test Values */}
+            {testData && (
+              <div className="test-values-box" style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ color: "#e63946", marginBottom: "0.5rem" }}>Extracted Test Values</h3>
+                <div className="test-values-scroll">
+                  <table className="test-table">
+                    <thead>
+                      <tr>
+                        <th>Test</th>
+                        <th>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(testData).map(([key, value]) => (
+                        <tr key={key}>
+                          <td>{key}</td>
+                          <td>{typeof value === "object" && value !== null
+                            ? `${value.value} ${value.unit || ""}`.trim()
+                            : value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Analyze Button */}
             <button
               className="analyze-btn animate-btn"
               onClick={handleAnalyze}
               disabled={analyzing || !name || !age}
+              style={{ marginTop: "2rem" }}
             >
-              {analyzing ? "Analyzing..." : "🧠 Analyze Report"}
+              {analyzing ? (
+                <>
+                  <CircularProgress size={18} style={{ color: "#fff", marginRight: 8 }} />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <SendIcon style={{ fontSize: 18, marginRight: 8 }} />
+                  Analyze Report
+                </>
+              )}
             </button>
           </div>
         )}
 
-        {/* Results */}
-        {testData && (
-          <>
-            <div className={`section animate-fadein ${showResults ? "visible" : "hidden"}`}>
-              <h2 className="result-title">📊 Extracted Test Values</h2>
-              <div className="test-values-box">
-                <table className="test-table">
-                  <thead>
-                    <tr>
-                      <th>Test</th>
-                      <th>Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(testData).map(([key, value]) => (
-                      <tr key={key}>
-                        <td>{key}</td>
-                        <td>{typeof value === "object" && value !== null
-                          ? `${value.value} ${value.unit || ""}`.trim()
-                          : value}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        {/* Analysis Results Section */}
+        {insight && showResults && (
+          <div className="section animate-fadein">
+            <h2 className="result-title">💡 Analysis Results</h2>
+            <div className="insight-box">
+              <ReactMarkdown>{insight}</ReactMarkdown>
             </div>
-
-            {/* ✅ Gemini Insight with Markdown */}
-            <div className={`section animate-fadein ${showResults ? "visible" : "hidden"}`}>
-              <h2 className="result-title">💡 Insight from Gemini</h2>
-              <div className="insight-box">
-                <ReactMarkdown>{insight}</ReactMarkdown> {/* Markdown rendering here */}
-              </div>
-            </div>
-          </>
+          </div>
         )}
 
-        {/* ✅ Chat Box with Markdown in assistant messages */}
-        <div className="section animate-fadein" style={{ marginTop: "2rem" }}>
-          <h2 className="section-title">💬 Ask Anything About Your Report</h2>
-          <div className="chat-box">
-            {chatMessages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={msg.role === "user" ? "chat-msg user" : "chat-msg assistant"}
-              >
-                <div className={msg.role === "user" ? "chat-user" : "chat-assistant"}>
-                  <strong>{msg.role === "user" ? "You: " : "Assistant: "}</strong>
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+        {/* Chat Interface */}
+        {insight && (
+          <div className="section animate-fadein" style={{ marginTop: "2rem" }}>
+            <h2 className="section-title">💬 Ask About Your Report</h2>
+            <div className="chat-box">
+              {chatMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={msg.role === "user" ? "chat-msg user" : "chat-msg assistant"}
+                >
+                  <div className={msg.role === "user" ? "chat-user" : "chat-assistant"}>
+                    <strong>{msg.role === "user" ? "You: " : "Assistant: "}</strong>
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+              {loadingChat && (
+                <div className="chat-msg assistant">
+                  <div className="chat-assistant">
+                    <CircularProgress size={16} style={{ color: "#e63946", marginRight: 8 }} />
+                    <span>Thinking...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="chat-row">
+              <input
+                className="chat-input"
+                type="text"
+                placeholder="Ask a question about your report..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleChatSend()}
+                disabled={loadingChat}
+              />
+              <button
+                className="send-btn animate-btn"
+                onClick={handleChatSend}
+                disabled={!chatInput.trim() || loadingChat}
+              >
+                <SendIcon />
+              </button>
+            </div>
           </div>
-          <div className="chat-row">
-            <input
-              className="chat-input"
-              type="text"
-              placeholder="Ask a question"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleChatSend();
-              }}
-              disabled={!testData}
-              style={{ background: "#fff5f7" }}
-            />
-            <button
-              className="send-btn animate-btn"
-              onClick={handleChatSend}
-              disabled={!chatInput.trim() || !testData}
-            >
-              Send
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Loading Indicators */}
+      {/* Loading Modals */}
       <Modal open={extracting}>
         <div className="modal-box">
           <CircularProgress style={{ color: "#e63946" }} />
-          <div className="modal-text">Extracting text from PDF...</div>
+          <div className="modal-text">Extracting report data...</div>
         </div>
       </Modal>
       <Modal open={analyzing}>

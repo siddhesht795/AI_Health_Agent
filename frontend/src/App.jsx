@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./App.css";
+import ProfileSection from "./components/ProfileSection.jsx";
+import PdfUpload from "./components/PDFUpload.jsx";
 import { Modal, CircularProgress, Alert, Snackbar, IconButton } from "@mui/material";
-import ReactMarkdown from "react-markdown";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
-import SendIcon from "@mui/icons-material/Send";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import { v4 as uuidv4 } from "uuid";
 
@@ -74,7 +73,7 @@ function App() {
 
       const data = await res.json();
       setReportText(data.text || "");
-      showSnackbar("PDF extracted! Please review your details.");
+      showSnackbar("PDF is being extracted! Please review your details after extracted.");
 
       if (data.text) {
         const extractRes = await fetch("http://localhost:5000/api/analyze_report", {
@@ -255,188 +254,39 @@ function App() {
       />
 
       <div className="main-paper animate-fadein">
-        {/* PDF Upload Section */}
-        <div className="section animate-slidein">
-          <h2 className="section-title">
-            <UploadFileIcon style={{ verticalAlign: "middle", marginRight: 8, color: "#e63946" }} />
-            Upload your health report PDF
-          </h2>
-          <label className="custom-file-upload">
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={handlePdfChange}
-              style={{ display: "none" }}
-            />
-            <span>
-              {pdfFile ? pdfFile.name : "Choose PDF"}
-            </span>
-          </label>
-          <button
-            className="extract-btn animate-btn"
-            onClick={handleExtractPdf}
-            disabled={!pdfFile || extracting}
-          >
-            {extracting ? (
-              <>
-                <CircularProgress size={18} style={{ color: "#fff", marginRight: 8 }} />
-                Extracting...
-              </>
-            ) : (
-              <>
-                <UploadFileIcon style={{ fontSize: 18, marginRight: 8 }} />
-                Extract PDF
-              </>
-            )}
-          </button>
-        </div>
+        <PdfUpload
+          pdfFile={pdfFile}
+          extracting={extracting}
+          onPdfChange={handlePdfChange}
+          onExtractPdf={handleExtractPdf}
+        />
 
-        {/* Profile and Extracted Values Section */}
         {reportText && showProfile && (
-          <div className="section animate-fadein">
-            <h2 className="section-title">👤 Profile Information</h2>
-            <div className="profile-row">
-              <input
-                className="profile-input"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Name"
-                autoFocus
-              />
-              <input
-                className="profile-input"
-                type="number"
-                value={age}
-                min={0}
-                max={120}
-                onChange={(e) => setAge(e.target.value)}
-                placeholder="Age"
-              />
-              <select
-                className="profile-input"
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-              >
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <input
-              className="profile-input"
-              type="text"
-              value={medicalHistory}
-              onChange={(e) => setMedicalHistory(e.target.value)}
-              placeholder="Medical History (comma-separated)"
-              style={{ width: "100%", marginTop: "1rem" }}
-            />
-
-            {/* Extracted Test Values */}
-            {testData && (
-              <div className="test-values-box" style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ color: "#e63946", marginBottom: "0.5rem" }}>Extracted Test Values</h3>
-                <div className="test-values-scroll">
-                  <table className="test-table">
-                    <thead>
-                      <tr>
-                        <th>Test</th>
-                        <th>Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(testData).map(([key, value]) => (
-                        <tr key={key}>
-                          <td>{key}</td>
-                          <td>{typeof value === "object" && value !== null
-                            ? `${value.value} ${value.unit || ""}`.trim()
-                            : value}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Analyze Button */}
-            <button
-              className="analyze-btn animate-btn"
-              onClick={handleAnalyze}
-              disabled={analyzing || !name || !age}
-              style={{ marginTop: "2rem" }}
-            >
-              {analyzing ? (
-                <>
-                  <CircularProgress size={18} style={{ color: "#fff", marginRight: 8 }} />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <SendIcon style={{ fontSize: 18, marginRight: 8 }} />
-                  Analyze Report
-                </>
-              )}
-            </button>
-          </div>
+          <ProfileSection
+            name={name}
+            setName={setName}
+            age={age}
+            setAge={setAge}
+            gender={gender}
+            setGender={setGender}
+            medicalHistory={medicalHistory}
+            setMedicalHistory={setMedicalHistory}
+            analyzing={analyzing}
+            onAnalyze={handleAnalyze}
+          />
         )}
 
-        {/* Analysis Results Section */}
-        {insight && showResults && (
-          <div className="section animate-fadein">
-            <h2 className="result-title">💡 Analysis Results</h2>
-            <div className="insight-box">
-              <ReactMarkdown>{insight}</ReactMarkdown>
-            </div>
-          </div>
-        )}
+        <AnalysisResults insight={insight && showResults ? insight : ""} />
 
-        {/* Chat Interface */}
-        {insight && (
-          <div className="section animate-fadein" style={{ marginTop: "2rem" }}>
-            <h2 className="section-title">💬 Ask About Your Report</h2>
-            <div className="chat-box">
-              {chatMessages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={msg.role === "user" ? "chat-msg user" : "chat-msg assistant"}
-                >
-                  <div className={msg.role === "user" ? "chat-user" : "chat-assistant"}>
-                    <strong>{msg.role === "user" ? "You: " : "Assistant: "}</strong>
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                </div>
-              ))}
-              {loadingChat && (
-                <div className="chat-msg assistant">
-                  <div className="chat-assistant">
-                    <CircularProgress size={16} style={{ color: "#e63946", marginRight: 8 }} />
-                    <span>Thinking...</span>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="chat-row">
-              <input
-                className="chat-input"
-                type="text"
-                placeholder="Ask a question about your report..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleChatSend()}
-                disabled={loadingChat}
-              />
-              <button
-                className="send-btn animate-btn"
-                onClick={handleChatSend}
-                disabled={!chatInput.trim() || loadingChat}
-              >
-                <SendIcon />
-              </button>
-            </div>
-          </div>
-        )}
+        <ChatInterface
+          insight={insight}
+          chatMessages={chatMessages}
+          loadingChat={loadingChat}
+          chatInput={chatInput}
+          setChatInput={setChatInput}
+          handleChatSend={handleChatSend}
+          chatEndRef={chatEndRef}
+        />
       </div>
 
       {/* Loading Modals */}

@@ -6,6 +6,7 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from datetime import datetime
 load_dotenv()
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -15,8 +16,13 @@ from langchain.memory import ConversationBufferMemory
 app = Flask(__name__)
 CORS(app)
 
-# Store chat memory per session/user
 user_memories = {}
+
+def get_chat_title(user_profile):
+    name = user_profile.get("name", "User")
+    age = user_profile.get("age", "?")
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    return f"{name} - {age} - {date_str}"
 
 @app.route("/api/extract_pdf", methods=["POST"])
 def extract_pdf():
@@ -60,9 +66,12 @@ def analyze_report():
             "user_profile": user_profile
         })
 
+        chat_title = get_chat_title(user_profile)
+
         return jsonify({
             "testData": test_data,
-            "insight": explanation.content if hasattr(explanation, "content") else str(explanation)
+            "insight": explanation.content if hasattr(explanation, "content") else str(explanation),
+            "chatTitle": chat_title
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -77,6 +86,7 @@ def chat():
         test_data = data.get("testData", {})
         user_profile = data.get("userProfile", {})
         session_id = data.get("sessionId", "default")
+        report_text = data.get("reportText", "")
 
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
@@ -124,6 +134,7 @@ def chat():
         Dont add any statement which says that you are a doctor, act like you are just an ai health assistant.
         Keep the resonse to the point and dont provide unnecessary information.
         always provide a positive and well wishing response to the user so that the user does not get their morale down.
+        You dont need to greet me by saying hellow for example.
         Here's the patient context:
         {context_str}
 
@@ -139,9 +150,13 @@ def chat():
         if cleaned_response.startswith('"') and cleaned_response.endswith('"'):
             cleaned_response = cleaned_response[1:-1]
 
+        # Compose chat title: name - age - date
+        chat_title = get_chat_title(user_profile)
+
         return jsonify({
             "response": cleaned_response,
-            "sessionId": session_id
+            "sessionId": session_id,
+            "chatTitle": chat_title
         })
 
     except Exception as e:

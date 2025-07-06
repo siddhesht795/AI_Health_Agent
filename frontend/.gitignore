@@ -1,53 +1,27 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*.so
-*.pyd
-*.pyo
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Virtual environments
-venv/
-env/
-AIhealth/
-AIhealth
+# dependencies
+/node_modules
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
+# next.js
+/.next/
+/out/
 
-# VS Code settings
-.vscode/
+# production
+/build
 
-# macOS files
-.DS_Store
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# PyCharm
-.idea/
+# env files
+.env*
 
-# Logs and local settings
-*.log
-*.env
-.env.*
-*.db
-*.sqlite3
+# vercel
+.vercel
 
-# Test coverage
-htmlcov/
-coverage.xml
-.cache/
-nosetests.xml
-pytest_cache/
-
-# Flask or Django cache
-instance/
-*.pyc
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# Streamlit's temporary file
-.streamlit/
-
-# User data
-user_reports/
+# typescript
+*.tsbuildinfo
+next-env.d.ts

@@ -1,6 +1,6 @@
-from extract_pdf import extract_text_from_pdf
 from extract_values_chain import get_extract_values_chain
 from explain_tests_chain import get_explanation_chain
+from extract_pdf import extract_text_from_pdf
 import json
 import os
 from flask import Flask, request, jsonify
